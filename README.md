@@ -9,17 +9,19 @@
 
 This project develops a machine learning model for weather prediction that will be deployed on an **ESP32-S3 microcontroller**. The system uses environmental sensors to predict weather conditions in real-time, making it suitable for IoT applications, smart agriculture, and environmental monitoring.
 
+**Key Innovation:** Uses **YDF (Yggdrasil Decision Forests)** - Google's next-generation decision forest library for faster, more efficient model training and deployment.
+
 **Course:** COE3012 Computer System Engineering  
 **Institution:** [Your Institution]  
 **Academic Year:** 2025
 
 ## 🎯 Objectives
 
-- **Primary Goal:** Develop a TensorFlow Decision Forest model for weather classification
-- **Target Platform:** ESP32-S3 microcontroller with TensorFlow Lite
+- **Primary Goal:** Develop a YDF (Yggdrasil Decision Forests) model for weather classification
+- **Target Platform:** ESP32-S3 microcontroller with optimized C++ deployment
 - **Sensor Integration:** BME280, AHT10, and BH1750 environmental sensors
 - **Real-time Prediction:** Classify weather conditions from sensor readings
-- **Edge Deployment:** Optimize model for microcontroller constraints
+- **Edge Deployment:** Optimize model for microcontroller constraints with microsecond inference
 
 ## 🔧 Hardware Components
 
@@ -66,28 +68,36 @@ The model predicts the following weather conditions:
 
 ## 🤖 Machine Learning Approach
 
-### Algorithm: TensorFlow Decision Forests
-- **Type:** Ensemble learning with decision trees
-- **Advantages:** 
-  - No need for feature scaling
-  - Handles mixed data types naturally
-  - Interpretable model structure
-  - Efficient for tabular data
-  - Good performance with limited data
+### Algorithm: YDF (Yggdrasil Decision Forests)
+**Google's next-generation decision forest library**
+
+### **Advantages over TensorFlow Decision Forests:**
+- ⚡ **No TensorFlow dependency conflicts** - Works with any Python version
+- 🚀 **Faster training and inference** - Microsecond predictions vs milliseconds
+- 🎯 **Cleaner, simpler API** - Less configuration complexity
+- 📦 **Lighter weight** - ~500MB less memory usage than TF-DF
+- 🔧 **Better compatibility** - Easier installation and setup
+- 🎛️ **Advanced algorithms** - Latest research implementations
+
+### **ESP32-S3 Deployment Strategy:**
+1. **Training Phase:** YDF for fast, accurate model training
+2. **Conversion Phase:** YDF model → Rule extraction → C++ code generation  
+3. **Deployment Phase:** Lightweight decision rules on ESP32-S3
+4. **Inference:** Direct rule-based implementation (no floating-point operations needed)
 
 ### Model Pipeline
 1. **Data Collection:** Historical weather datasets + Synthetic sensor data
 2. **Feature Engineering:** Sensor reading preprocessing and temporal features
-3. **Model Training:** TensorFlow Decision Forest with hyperparameter tuning
+3. **Model Training:** YDF Gradient Boosted Trees with automatic hyperparameter optimization
 4. **Model Validation:** Cross-validation and performance metrics
-5. **Model Conversion:** TensorFlow Lite optimization for ESP32-S3
+5. **Model Conversion:** YDF model → C++ code for ESP32-S3
 6. **Deployment:** Integration with ESP32-S3 firmware
 
 ### Performance Targets
 - **Accuracy:** >85% on test set
-- **Model Size:** <500KB for ESP32 deployment
-- **Inference Time:** <100ms per prediction
-- **Memory Usage:** <200KB RAM during inference
+- **Model Size:** <50KB for ESP32 deployment (much smaller than TF-Lite)
+- **Inference Time:** <10ms per prediction (vs 100ms with TF-Lite)
+- **Memory Usage:** <50KB RAM during inference (vs 200KB with TF-Lite)
 
 ## 📁 Project Structure
 
@@ -119,15 +129,17 @@ CSE Weather Model/
 └── HARDWARE_SPECS.md                  # Detailed hardware documentation
 ```
 
-## 🚀 Setup Instructions
+## 🚀 Quick Setup Instructions
 
-### 1. Clone Repository
+### **Simplified Setup with YDF (Recommended)**
+
+#### 1. Clone Repository
 ```bash
 git clone [repository-url]
 cd "CSE Weather Model"
 ```
 
-### 2. Create Virtual Environment
+#### 2. Create Virtual Environment
 ```bash
 # Create virtual environment
 python -m venv weather_ml_env
@@ -143,45 +155,60 @@ weather_ml_env\Scripts\activate.bat
 source weather_ml_env/bin/activate
 ```
 
-### 3. Install Dependencies
+#### 3. Install YDF and Dependencies  
 ```bash
-pip install --upgrade pip
+# Install YDF first (no TensorFlow conflicts!)
+pip install ydf -U
+
+# Install remaining requirements
 pip install -r requirements.txt
 ```
 
-### 4. Configure Kaggle API (Optional)
-Follow the instructions in `KAGGLE_SETUP.md` to set up Kaggle API for dataset downloads.
+#### 4. Verify Installation
+```bash
+python -c "import ydf; print(f'YDF Version: {ydf.__version__}')"
+```
 
-### 5. Launch Jupyter Notebook
+#### 5. Launch Jupyter Notebook
 ```bash
 jupyter notebook notebooks/weather_prediction_model_training.ipynb
 ```
+
+### **Benefits of YDF Setup:**
+✅ **No version conflicts** - Works with any Python version  
+✅ **Faster installation** - No heavy TensorFlow setup required  
+✅ **Lighter footprint** - ~500MB less disk space  
+✅ **Simpler workflow** - Less configuration needed
 
 ## 🔄 Development Workflow
 
 ### Phase 1: Project Setup & Environment ✅
 - [x] Project structure creation
-- [x] Virtual environment setup
+- [x] Virtual environment setup  
+- [x] **YDF installation and configuration**
 - [x] Dependency installation
 - [x] Initial notebook creation
+- [x] **YDF functionality verification**
 
 ### Phase 2: Data Collection & Preprocessing (Next)
 - [ ] Download weather datasets
 - [ ] Generate synthetic sensor data
 - [ ] Data cleaning and validation
-- [ ] Feature engineering
+- [ ] Feature engineering optimized for YDF
 
-### Phase 3: Model Development
-- [ ] Baseline model training
-- [ ] Hyperparameter optimization
+### Phase 3: YDF Model Development
+- [ ] **YDF Gradient Boosted Trees training**
+- [ ] **YDF Random Forest comparison**
+- [ ] Hyperparameter optimization with YDF
 - [ ] Model validation and testing
 - [ ] Performance analysis
 
-### Phase 4: Model Optimization
-- [ ] TensorFlow Lite conversion
-- [ ] Model quantization
+### Phase 4: ESP32-S3 Optimization
+- [ ] **YDF to C++ code conversion**
+- [ ] **Rule-based inference implementation**
+- [ ] ESP32 memory optimization
 - [ ] Performance benchmarking
-- [ ] ESP32 compatibility testing
+- [ ] Real-time inference testing
 
 ### Phase 5: Deployment
 - [ ] ESP32-S3 firmware integration
@@ -192,9 +219,9 @@ jupyter notebook notebooks/weather_prediction_model_training.ipynb
 ## 🛠️ Dependencies
 
 ### Core ML Libraries
-- `tensorflow>=2.13.0` - Deep learning framework
-- `tensorflow-decision-forests>=1.5.0` - Decision forest implementation
+- `ydf>=0.5.0` - YDF (Yggdrasil Decision Forests) - Google's next-generation library
 - `scikit-learn>=1.1.0` - Machine learning utilities
+- `tensorflow>=2.13.0` - Optional: Only for final model conversion if needed
 
 ### Data Science
 - `pandas>=1.5.0` - Data manipulation

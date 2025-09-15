@@ -1,10 +1,9 @@
 # Weather Prediction ML Project - ESP32-S3 Deployment
-# TensorFlow Decision Forests for Weather Classification
+# YDF (Yggdrasil Decision Forests) for Weather Classification
 # Created for COE3012 Computer System Engineering
 
 # Core Machine Learning
-tensorflow>=2.13.0
-tensorflow-decision-forests>=1.5.0
+ydf>=0.5.0
 
 # Data Science & Analysis
 pandas>=1.5.0
@@ -27,7 +26,8 @@ kaggle>=1.5.0
 tqdm>=4.60.0
 requests>=2.25.0
 
-# Model Deployment (for ESP32 conversion)
+# Model Deployment (Optional: only for final conversion if needed)
+tensorflow>=2.13.0
 tensorflow-lite>=2.13.0
 
 # Optional: Data manipulation and time series
