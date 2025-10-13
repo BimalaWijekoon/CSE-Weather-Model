@@ -2198,17 +2198,33 @@ input:checked + .slider::before {
     font-size: 2.5rem;
     color: white;
     box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3);
+    transition: all 0.3s ease;
+}
+
+.wifi-icon-large.disconnected {
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
 }
 
 .wifi-state {
     font-size: 1.5rem;
     font-weight: 700;
     color: var(--text-primary);
+    transition: all 0.3s ease;
+}
+
+.wifi-state.disconnected {
+    color: var(--danger-color);
 }
 
 .wifi-description {
     font-size: 0.875rem;
     color: var(--text-secondary);
+    transition: all 0.3s ease;
+}
+
+.wifi-description.disconnected {
+    color: var(--danger-color);
 }
 
 /* Signal Display */

@@ -10,6 +10,9 @@ class WeatherDashboard {
         this.autoScroll = true;
         this.lastDataHash = null;
         this.lastPrediction = null; // Track previous prediction
+        this.lastDataTimestamp = null; // Track last data receive time
+        this.connectionCheckInterval = null; // Interval for checking connection
+        this.isOnline = false; // Current connection status
         
         this.init();
     }
@@ -119,6 +122,20 @@ class WeatherDashboard {
             });
         }
         
+        // Log filter buttons
+        const filterBtns = document.querySelectorAll('.filter-btn');
+        filterBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                // Remove active class from all buttons
+                filterBtns.forEach(b => b.classList.remove('active'));
+                // Add active class to clicked button
+                btn.classList.add('active');
+                // Apply filter
+                const filter = btn.getAttribute('data-filter');
+                this.filterActivityLog(filter);
+            });
+        });
+        
         // Auto-scroll toggle
         const autoScrollToggle = document.getElementById('autoScrollToggle');
         if (autoScrollToggle) {
@@ -223,7 +240,8 @@ class WeatherDashboard {
             // Test connection
             await api.getLatestData();
             
-            this.setConnectionStatus('connected');
+            // Connection will be set by the connection monitor
+            // this.setConnectionStatus('connected');
             
             // Load dashboard data
             await this.updateDashboard();
@@ -233,7 +251,7 @@ class WeatherDashboard {
             
         } catch (error) {
             console.error('Failed to load initial data:', error);
-            this.setConnectionStatus('disconnected');
+            // Don't manually set disconnected - let connection monitor handle it
         }
     }
 
@@ -274,6 +292,13 @@ class WeatherDashboard {
         try {
             const latest = await api.getLatestData();
             const stats = await api.getChannelStats();
+            
+            // Update last data timestamp - ESP is sending data
+            this.lastDataTimestamp = Date.now();
+            if (!this.isOnline) {
+                this.isOnline = true;
+                this.setConnectionStatus('connected');
+            }
             
             // Check if data actually changed
             const dataHash = JSON.stringify(latest);
@@ -354,8 +379,7 @@ class WeatherDashboard {
             
         } catch (error) {
             console.error('Error updating dashboard:', error);
-            this.setConnectionStatus('disconnected');
-            this.setLiveIndicator(false);
+            // Don't manually set disconnected - let connection monitor handle it
             this.addLogEntry('error', `Failed to update: ${error.message}`);
         }
     }
@@ -524,9 +548,38 @@ class WeatherDashboard {
             // Update average inference time
             this.updateElement('avgInference', `${(latest.inference / 1000).toFixed(2)} ms`);
             
-            // Calculate uptime (placeholder)
-            const uptimeHours = Math.floor(Math.random() * 72) + 1;
-            this.updateElement('systemUptime', uptimeHours);
+            // Get device status from Firebase for uptime
+            if (firebaseAPI && firebaseAPI.initialized) {
+                const status = await firebaseAPI.getDeviceStatus();
+                if (status && status.last_seen) {
+                    // last_seen is uptime in seconds from ESP32
+                    const uptimeSeconds = status.last_seen;
+                    const uptimeHours = Math.floor(uptimeSeconds / 3600);
+                    const uptimeMinutes = Math.floor((uptimeSeconds % 3600) / 60);
+                    
+                    // Display as "X hours" or "X hours Y min"
+                    if (uptimeHours > 0) {
+                        if (uptimeMinutes > 0) {
+                            this.updateElement('systemUptime', `${uptimeHours}h ${uptimeMinutes}m`);
+                        } else {
+                            this.updateElement('systemUptime', `${uptimeHours}h`);
+                        }
+                    } else {
+                        this.updateElement('systemUptime', `${uptimeMinutes}m`);
+                    }
+                } else {
+                    this.updateElement('systemUptime', '--');
+                }
+            } else {
+                // Fallback: calculate from last data timestamp
+                if (this.lastDataTimestamp) {
+                    const uptimeMs = Date.now() - this.lastDataTimestamp;
+                    const uptimeHours = Math.floor(uptimeMs / (1000 * 3600));
+                    this.updateElement('systemUptime', `${uptimeHours}h`);
+                } else {
+                    this.updateElement('systemUptime', '--');
+                }
+            }
             
         } catch (error) {
             console.error('Error updating device status:', error);
@@ -551,10 +604,33 @@ class WeatherDashboard {
                 signalBars.className = 'signal-bars ' + wifiQuality.level.toLowerCase().replace(' ', '-');
             }
             
-            // Update WiFi status
-            this.updateElement('wifiState', 'Connected');
-            this.updateElement('thingspeakStatus', '✅ Connected');
-            this.updateElement('cloudThingspeakStatus', '✅ Connected');
+            // Update WiFi status based on actual connection
+            const wifiStatus = this.isOnline ? 'Connected' : 'Disconnected';
+            this.updateElement('wifiState', wifiStatus);
+            
+            // Update description text
+            const wifiDescription = this.isOnline ? 'ESP32 is online' : 'ESP32 is offline';
+            this.updateElement('wifiDescription', wifiDescription);
+            
+            // Update visual styling - red for disconnected, green for connected
+            const wifiIcon = document.getElementById('wifiIcon');
+            const wifiStateEl = document.getElementById('wifiState');
+            const wifiDescEl = document.getElementById('wifiDescription');
+            
+            if (this.isOnline) {
+                wifiIcon?.classList.remove('disconnected');
+                wifiStateEl?.classList.remove('disconnected');
+                wifiDescEl?.classList.remove('disconnected');
+            } else {
+                wifiIcon?.classList.add('disconnected');
+                wifiStateEl?.classList.add('disconnected');
+                wifiDescEl?.classList.add('disconnected');
+            }
+            
+            // ThingSpeak is active if we're getting data
+            const thingspeakStatus = this.isOnline ? '✅ Connected' : '❌ Disconnected';
+            this.updateElement('thingspeakStatus', thingspeakStatus);
+            this.updateElement('cloudThingspeakStatus', thingspeakStatus);
             this.updateElement('lastUploadTime', api.formatTime(latest.timestamp));
             
             const stats = await api.getChannelStats();
@@ -695,6 +771,32 @@ class WeatherDashboard {
     }
 
     /**
+     * Filter activity log by type
+     * @param {string} filter - Filter type (all, info, success, warning, error)
+     */
+    filterActivityLog(filter) {
+        const logEntries = document.querySelectorAll('.log-entry');
+        
+        logEntries.forEach(entry => {
+            if (filter === 'all') {
+                entry.style.display = 'grid';
+            } else {
+                if (entry.classList.contains(filter)) {
+                    entry.style.display = 'grid';
+                } else {
+                    entry.style.display = 'none';
+                }
+            }
+        });
+        
+        // Update count
+        const visibleCount = Array.from(logEntries).filter(entry => 
+            entry.style.display !== 'none'
+        ).length;
+        this.updateElement('logEntryCount', visibleCount);
+    }
+
+    /**
      * Update value with flash animation
      * @param {string} id - Element ID
      * @param {string} value - New value
@@ -807,6 +909,11 @@ class WeatherDashboard {
             }
         }, CONFIG.updateIntervals.activity);
         
+        // Monitor ESP32 connection - check every 1 second
+        this.connectionCheckInterval = setInterval(() => {
+            this.checkESPConnection();
+        }, 1000);
+        
         // Update real weather every 5 minutes (separate from page refresh)
         if (CONFIG.openWeatherMap.enabled) {
             this.refreshIntervals.weather = setInterval(() => {
@@ -825,6 +932,12 @@ class WeatherDashboard {
             if (interval) clearInterval(interval);
         });
         this.refreshIntervals = {};
+        
+        // Clear connection check interval
+        if (this.connectionCheckInterval) {
+            clearInterval(this.connectionCheckInterval);
+            this.connectionCheckInterval = null;
+        }
     }
 
     /**
@@ -910,6 +1023,39 @@ class WeatherDashboard {
             }
         } catch (error) {
             console.error('Error updating backup page:', error);
+        }
+    }
+
+    /**
+     * Check ESP32 connection based on data updates
+     */
+    checkESPConnection() {
+        if (!this.lastDataTimestamp) {
+            // No data received yet
+            return;
+        }
+        
+        const timeSinceLastData = Date.now() - this.lastDataTimestamp;
+        const timeout = 5000; // 5 seconds timeout
+        
+        if (timeSinceLastData > timeout) {
+            // No data for more than 5 seconds - ESP is offline
+            if (this.isOnline) {
+                this.isOnline = false;
+                this.setConnectionStatus('disconnected');
+                this.setLiveIndicator(false);
+                this.addLogEntry('warning', 'ESP32 connection lost', {
+                    'Last seen': `${Math.round(timeSinceLastData / 1000)}s ago`
+                });
+            }
+        } else {
+            // Data is being received - ESP is online
+            if (!this.isOnline) {
+                this.isOnline = true;
+                this.setConnectionStatus('connected');
+                this.setLiveIndicator(true);
+                this.addLogEntry('success', 'ESP32 reconnected');
+            }
         }
     }
 
