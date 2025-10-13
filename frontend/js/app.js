@@ -201,6 +201,7 @@ class WeatherDashboard {
             'graphs': 'Real-Time Graphs',
             'predictions': 'ML Predictions',
             'activity': 'Activity Log',
+            'backup': 'Backup & Analysis',
             'device': 'Device Status',
             'wifi': 'WiFi Overview'
         };
@@ -253,6 +254,9 @@ class WeatherDashboard {
                 break;
             case 'activity':
                 await this.updateActivityLog();
+                break;
+            case 'backup':
+                await this.updateBackupPage();
                 break;
             case 'device':
                 await this.updateDeviceStatus();
@@ -861,6 +865,22 @@ class WeatherDashboard {
         
         const span = element.querySelector('span');
         span.textContent = `Last update: ${api.formatTime(timestamp)}`;
+    }
+
+    /**
+     * Update backup & analysis page
+     */
+    async updateBackupPage() {
+        try {
+            // Initialize backup page if not already done
+            if (typeof backupPage !== 'undefined' && backupPage) {
+                await backupPage.init();
+            } else {
+                console.error('Backup page module not loaded');
+            }
+        } catch (error) {
+            console.error('Error updating backup page:', error);
+        }
     }
 
     /**

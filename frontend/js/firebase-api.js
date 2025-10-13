@@ -2,8 +2,10 @@
 class FirebaseAPI {
     constructor() {
         this.db = null;
+        this.auth = null;
         this.deviceId = null;
         this.initialized = false;
+        this.authenticated = false;
         this.cache = {
             lastFetch: null,
             data: []
@@ -27,13 +29,28 @@ class FirebaseAPI {
             }
 
             this.db = firebase.database();
-            this.initialized = true;
+            this.auth = firebase.auth();
             
+            // Authenticate with email/password
+            if (CONFIG.firebase.auth && CONFIG.firebase.auth.email) {
+                console.log('Authenticating with Firebase...');
+                await this.auth.signInWithEmailAndPassword(
+                    CONFIG.firebase.auth.email,
+                    CONFIG.firebase.auth.password
+                );
+                this.authenticated = true;
+                console.log('✅ Firebase authenticated successfully');
+            } else {
+                console.warn('No authentication credentials provided');
+            }
+
+            this.initialized = true;
             console.log('Firebase initialized successfully');
             return true;
         } catch (error) {
             console.error('Firebase initialization error:', error);
             this.initialized = false;
+            this.authenticated = false;
             return false;
         }
     }
@@ -57,10 +74,22 @@ class FirebaseAPI {
 
             const devices = [];
             snapshot.forEach((child) => {
+                const deviceData = child.val();
+                const readings = deviceData.readings || {};
+                
+                // Get the most recent reading timestamp
+                let lastTimestamp = null;
+                if (Object.keys(readings).length > 0) {
+                    const timestamps = Object.values(readings).map(r => r.timestamp).filter(t => t);
+                    if (timestamps.length > 0) {
+                        lastTimestamp = Math.max(...timestamps);
+                    }
+                }
+                
                 devices.push({
                     id: child.key,
-                    info: child.val().info || {},
-                    lastSeen: child.val().status?.last_seen || null
+                    info: deviceData.info || {},
+                    lastSeen: lastTimestamp
                 });
             });
 
@@ -477,6 +506,223 @@ class FirebaseAPI {
             minute: '2-digit',
             second: '2-digit'
         });
+    }
+
+    /**
+     * Get all readings for a device with optional limit
+     * @param {string} deviceId - Device ID
+     * @param {number} limit - Maximum number of readings (optional)
+     * @returns {Promise<Array>} Array of readings
+     */
+    async getAllReadings(deviceId = null, limit = null) {
+        try {
+            if (!this.initialized) {
+                await this.initialize();
+            }
+
+            const id = deviceId || this.deviceId;
+            if (!id) {
+                throw new Error('No device ID specified');
+            }
+
+            const readingsRef = this.db.ref(`devices/${id}/readings`);
+            
+            let query = readingsRef.orderByKey();
+            if (limit) {
+                query = query.limitToLast(limit);
+            }
+
+            const snapshot = await query.once('value');
+            
+            if (!snapshot.exists()) {
+                return [];
+            }
+
+            const readings = [];
+            snapshot.forEach((child) => {
+                readings.push({
+                    timestamp: parseInt(child.key),
+                    ...child.val()
+                });
+            });
+
+            // Sort by timestamp descending (newest first)
+            readings.sort((a, b) => b.timestamp - a.timestamp);
+            
+            return readings;
+        } catch (error) {
+            console.error('Error fetching all readings:', error);
+            return [];
+        }
+    }
+
+    /**
+     * Get readings statistics
+     * @param {string} deviceId - Device ID
+     * @returns {Promise<Object>} Statistics object
+     */
+    async getReadingsStats(deviceId = null) {
+        try {
+            const readings = await this.getAllReadings(deviceId);
+            
+            if (readings.length === 0) {
+                return {
+                    total: 0,
+                    today: 0,
+                    avgPerHour: 0,
+                    weatherDistribution: {}
+                };
+            }
+
+            // Count today's readings
+            const now = Date.now();
+            const todayStart = new Date();
+            todayStart.setHours(0, 0, 0, 0);
+            const todayCount = readings.filter(r => (r.timestamp * 1000) >= todayStart.getTime()).length;
+
+            // Calculate average per hour
+            const oldestReading = readings[readings.length - 1];
+            const hoursElapsed = (now - (oldestReading.timestamp * 1000)) / (1000 * 60 * 60);
+            const avgPerHour = hoursElapsed > 0 ? (readings.length / hoursElapsed).toFixed(1) : 0;
+
+            // Weather distribution
+            const weatherDist = {};
+            readings.forEach(r => {
+                const weather = r.prediction || 'Unknown';
+                weatherDist[weather] = (weatherDist[weather] || 0) + 1;
+            });
+
+            return {
+                total: readings.length,
+                today: todayCount,
+                avgPerHour: avgPerHour,
+                weatherDistribution: weatherDist
+            };
+        } catch (error) {
+            console.error('Error calculating statistics:', error);
+            return {
+                total: 0,
+                today: 0,
+                avgPerHour: 0,
+                weatherDistribution: {}
+            };
+        }
+    }
+
+    /**
+     * Get device status
+     * @param {string} deviceId - Device ID
+     * @returns {Promise<Object>} Status object
+     */
+    async getDeviceStatus(deviceId = null) {
+        try {
+            if (!this.initialized) {
+                await this.initialize();
+            }
+
+            const id = deviceId || this.deviceId;
+            if (!id) {
+                throw new Error('No device ID specified');
+            }
+
+            const statusRef = this.db.ref(`devices/${id}/status`);
+            const snapshot = await statusRef.once('value');
+            
+            if (!snapshot.exists()) {
+                return { online: false, last_seen: null };
+            }
+
+            return snapshot.val();
+        } catch (error) {
+            console.error('Error fetching device status:', error);
+            return { online: false, last_seen: null };
+        }
+    }
+
+    /**
+     * Filter readings by weather type
+     * @param {Array} readings - Array of readings
+     * @param {string} weatherType - Weather type to filter
+     * @returns {Array} Filtered readings
+     */
+    filterByWeather(readings, weatherType) {
+        if (!weatherType || weatherType === 'all') {
+            return readings;
+        }
+        return readings.filter(r => r.prediction === weatherType);
+    }
+
+    /**
+     * Export readings to CSV format
+     * @param {Array} readings - Array of readings
+     * @returns {string} CSV string
+     */
+    exportToCSV(readings) {
+        if (!readings || readings.length === 0) {
+            return '';
+        }
+
+        const headers = ['Timestamp', 'Date/Time', 'Temperature', 'Humidity', 'Pressure', 'Lux', 'Prediction', 'Inference Time'];
+        const rows = readings.map(r => {
+            const date = new Date(r.timestamp * 1000);
+            return [
+                r.timestamp,
+                this.formatDateTime(date),
+                r.temperature?.toFixed(2) || '',
+                r.humidity?.toFixed(2) || '',
+                r.pressure?.toFixed(2) || '',
+                r.lux?.toFixed(2) || '',
+                r.prediction || '',
+                r.inference_time || ''
+            ];
+        });
+
+        const csvContent = [
+            headers.join(','),
+            ...rows.map(row => row.join(','))
+        ].join('\n');
+
+        return csvContent;
+    }
+
+    /**
+     * Download CSV file
+     * @param {Array} readings - Array of readings
+     * @param {string} filename - Filename for download
+     */
+    downloadCSV(readings, filename = 'firebase_backup_data.csv') {
+        const csv = this.exportToCSV(readings);
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        
+        link.setAttribute('href', url);
+        link.setAttribute('download', filename);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }
+
+    /**
+     * Download JSON file
+     * @param {Array} readings - Array of readings
+     * @param {string} filename - Filename for download
+     */
+    downloadJSON(readings, filename = 'firebase_backup_data.json') {
+        const jsonStr = JSON.stringify(readings, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        
+        link.setAttribute('href', url);
+        link.setAttribute('download', filename);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
     }
 }
 

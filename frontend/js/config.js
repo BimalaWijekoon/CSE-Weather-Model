@@ -89,6 +89,11 @@ const CONFIG = {
             appId: "1:560109147497:web:ef06ff5d4d28448ef8d9f8",
             measurementId: "G-1JZRSJM8ZS"
         },
+        // Authentication credentials (must match ESP32 credentials)
+        auth: {
+            email: "esp32@test.com",
+            password: "esp32test123"
+        },
         // Default device ID (will be auto-detected from available devices)
         defaultDeviceId: null
     }
