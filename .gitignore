@@ -279,3 +279,6 @@ checkpoint
 !results/reports/.gitkeep
 !results/metrics/.gitkeep
 !deployment/esp32/.gitkeep
+
+# Compressed archives
+*.zip
