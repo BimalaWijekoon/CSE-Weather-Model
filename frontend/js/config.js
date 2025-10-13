@@ -10,9 +10,9 @@ const CONFIG = {
     
     // OpenWeatherMap API Configuration
     openWeatherMap: {
-        apiKey: 'YOUR_API_KEY_HERE', // Get free key from: https://openweathermap.org/api
+        apiKey: 'fa326e062a972cf227f187e6740628f5',
         apiUrl: 'https://api.openweathermap.org/data/2.5',
-        enabled: false, // Set to true after adding API key
+        enabled: true, // Set to true after adding API key
         updateInterval: 300000 // 5 minutes (free tier: 60 calls/minute, 1000/day)
     },
     

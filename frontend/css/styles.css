@@ -1093,7 +1093,7 @@ input:checked + .slider::before {
     border: 1px solid var(--border-color);
     box-shadow: var(--shadow-md);
     overflow: hidden;
-    height: 340px;
+    height: 380px;
     display: flex;
     flex-direction: column;
 }

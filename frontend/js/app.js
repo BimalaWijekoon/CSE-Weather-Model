@@ -402,29 +402,39 @@ class WeatherDashboard {
 
             const weatherData = await weatherAPI.getWeatherAuto();
             
-            // Update location
-            this.updateElement('realWeatherLocation', weatherData.location);
+            if (!weatherData) {
+                throw new Error('No weather data received');
+            }
             
-            // Update icon
+            // Update location in header
+            const locationElement = document.querySelector('#weatherLocation span');
+            if (locationElement) {
+                locationElement.textContent = weatherData.location || 'Unknown';
+            }
+            
+            // Update icon with proper Font Awesome icon
             const iconElement = document.getElementById('realWeatherIcon');
             if (iconElement) {
-                iconElement.className = `weather-icon-large ${weatherData.icon}`;
+                iconElement.innerHTML = `<i class="fas ${weatherData.icon || 'fa-cloud'}"></i>`;
             }
             
             // Update condition
-            this.updateElement('realWeatherCondition', weatherData.condition);
+            this.updateElement('realWeatherCondition', weatherData.condition || 'N/A');
             
-            // Update weather details
-            this.updateElement('realWeatherTemp', `${weatherData.temperature.toFixed(1)} °C`);
-            this.updateElement('realWeatherHumidity', `${weatherData.humidity} %`);
-            this.updateElement('realWeatherWind', `${weatherData.windSpeed.toFixed(1)} km/h`);
+            // Update weather details - use temperature or temp
+            const temp = weatherData.temperature || weatherData.temp || 0;
+            this.updateElement('realWeatherTemp', `${temp.toFixed(1)} °C`);
+            this.updateElement('realWeatherHumidity', `${weatherData.humidity || 0} %`);
+            this.updateElement('realWeatherWind', `${(weatherData.windSpeed || 0).toFixed(1)} km/h`);
             
-            // Log success
-            this.addLogEntry('success', 'Real weather updated', {
-                'Location': weatherData.location,
-                'Condition': weatherData.condition,
-                'Temperature': `${weatherData.temperature.toFixed(1)} °C`
-            });
+            // Log success only if not mock data
+            if (!weatherData.isMock) {
+                this.addLogEntry('success', 'Real weather updated', {
+                    'Location': weatherData.location,
+                    'Condition': weatherData.condition,
+                    'Temperature': `${temp.toFixed(1)} °C`
+                });
+            }
             
         } catch (error) {
             console.error('Error updating real weather:', error);
@@ -544,6 +554,7 @@ class WeatherDashboard {
             // Update WiFi status
             this.updateElement('wifiState', 'Connected');
             this.updateElement('thingspeakStatus', '✅ Connected');
+            this.updateElement('cloudThingspeakStatus', '✅ Connected');
             this.updateElement('lastUploadTime', api.formatTime(latest.timestamp));
             
             const stats = await api.getChannelStats();
@@ -551,8 +562,27 @@ class WeatherDashboard {
                 this.updateElement('uploadCount', stats.totalRecords.toLocaleString());
             }
             
+            // Update Cloud Services section
+            if (CONFIG.firebase && CONFIG.firebase.enabled) {
+                this.updateElement('firebaseStatus', '✅ Connected');
+                this.updateElement('firebaseProjectId', CONFIG.firebase.config.projectId || '--');
+                
+                // Extract region from database URL
+                const dbUrl = CONFIG.firebase.config.databaseURL || '';
+                const region = dbUrl.includes('asia-southeast1') ? 'Asia Southeast (Singapore)' : 
+                              dbUrl.includes('us-central') ? 'US Central' : 
+                              dbUrl.includes('europe-west') ? 'Europe West' : 'Default';
+                this.updateElement('firebaseRegion', region);
+            } else {
+                this.updateElement('firebaseStatus', '❌ Disabled');
+                this.updateElement('firebaseProjectId', 'Not configured');
+                this.updateElement('firebaseRegion', '--');
+            }
+            
         } catch (error) {
             console.error('Error updating WiFi status:', error);
+            this.updateElement('firebaseStatus', '⚠️ Error');
+            this.updateElement('cloudThingspeakStatus', '⚠️ Error');
         }
     }
 

@@ -366,9 +366,12 @@ class OpenWeatherAPI {
 
         try {
             const url = `${this.baseUrl}/weather?lat=${lat}&lon=${lon}&appid=${this.apiKey}&units=metric`;
+            console.log('Fetching weather from:', this.baseUrl + '/weather');
             const response = await fetch(url);
             
             if (!response.ok) {
+                const errorText = await response.text();
+                console.error(`OpenWeatherMap API error (${response.status}):`, errorText);
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
             
@@ -376,19 +379,23 @@ class OpenWeatherAPI {
             this.cache.lastFetch = new Date();
             this.cache.data = data;
             
+            // Get Font Awesome icon
+            const weatherIcon = this.getWeatherIcon(data.weather[0].main, data.weather[0].icon);
+            
             return {
                 location: data.name,
                 country: data.sys.country,
                 condition: data.weather[0].main,
                 description: data.weather[0].description,
                 temp: data.main.temp,
+                temperature: data.main.temp,  // Add for compatibility
                 feelsLike: data.main.feels_like,
                 humidity: data.main.humidity,
                 pressure: data.main.pressure,
                 windSpeed: data.wind.speed,
                 windDeg: data.wind.deg,
                 clouds: data.clouds.all,
-                icon: data.weather[0].icon,
+                icon: weatherIcon,  // Use Font Awesome icon
                 timestamp: new Date(data.dt * 1000)
             };
         } catch (error) {
@@ -422,13 +429,14 @@ class OpenWeatherAPI {
             condition: 'Clear',
             description: 'API key not configured',
             temp: 0,
+            temperature: 0,  // Add for compatibility
             feelsLike: 0,
             humidity: 0,
             pressure: 0,
             windSpeed: 0,
             windDeg: 0,
             clouds: 0,
-            icon: '01d',
+            icon: 'fa-cloud',
             timestamp: new Date(),
             isMock: true
         };
