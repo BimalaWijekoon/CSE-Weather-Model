@@ -293,12 +293,8 @@ class WeatherDashboard {
             const latest = await api.getLatestData();
             const stats = await api.getChannelStats();
             
-            // Update last data timestamp - ESP is sending data
-            this.lastDataTimestamp = Date.now();
-            if (!this.isOnline) {
-                this.isOnline = true;
-                this.setConnectionStatus('connected');
-            }
+            // Mark data received - updates timestamp and connection status
+            this.markDataReceived();
             
             // Check if data actually changed
             const dataHash = JSON.stringify(latest);
@@ -390,6 +386,9 @@ class WeatherDashboard {
     async updateGraphs() {
         try {
             const data = await api.getHistoricalData(this.timeRange);
+            
+            // Mark data received
+            this.markDataReceived();
             
             if (data.length > 0) {
                 // Update charts
@@ -492,6 +491,9 @@ class WeatherDashboard {
             const latest = await api.getLatestData();
             const data = await api.getHistoricalData(60);
             
+            // Mark data received
+            this.markDataReceived();
+            
             // Update current prediction
             const weather = api.getWeatherClass(latest.prediction);
             
@@ -545,6 +547,9 @@ class WeatherDashboard {
         try {
             const latest = await api.getLatestData();
             
+            // Mark data received
+            this.markDataReceived();
+            
             // Update average inference time
             this.updateElement('avgInference', `${(latest.inference / 1000).toFixed(2)} ms`);
             
@@ -594,6 +599,9 @@ class WeatherDashboard {
             const latest = await api.getLatestData();
             const wifiQuality = api.getWiFiQuality(latest.rssi);
             
+            // Mark data received - this updates isOnline status
+            this.markDataReceived();
+            
             // Update signal strength
             this.updateElement('signalValue', `${latest.rssi} dBm`);
             this.updateElement('signalQuality', wifiQuality.level);
@@ -604,7 +612,7 @@ class WeatherDashboard {
                 signalBars.className = 'signal-bars ' + wifiQuality.level.toLowerCase().replace(' ', '-');
             }
             
-            // Update WiFi status based on actual connection
+            // Update WiFi status - now using updated isOnline value
             const wifiStatus = this.isOnline ? 'Connected' : 'Disconnected';
             this.updateElement('wifiState', wifiStatus);
             
@@ -668,6 +676,9 @@ class WeatherDashboard {
     async updateActivityLog() {
         try {
             const data = await api.getHistoricalData(60);
+            
+            // Mark data received
+            this.markDataReceived();
             
             if (data.length > 0) {
                 const latest = data[data.length - 1];
@@ -1023,6 +1034,19 @@ class WeatherDashboard {
             }
         } catch (error) {
             console.error('Error updating backup page:', error);
+        }
+    }
+
+    /**
+     * Mark that data was received from ESP32
+     * Call this whenever data is successfully fetched
+     */
+    markDataReceived() {
+        this.lastDataTimestamp = Date.now();
+        if (!this.isOnline) {
+            this.isOnline = true;
+            this.setConnectionStatus('connected');
+            this.setLiveIndicator(true);
         }
     }
 
