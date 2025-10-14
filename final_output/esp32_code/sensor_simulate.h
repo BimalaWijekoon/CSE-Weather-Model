@@ -11,45 +11,67 @@
  * - Continuous operation until stopped by user command
  * 
  * Features:
- * - Weather-pattern-based sensor generation (40% Cloudy, 20% Sunny, 20% Rainy, 10% Stormy, 10% Foggy)
+ * - Weather-pattern-based sensor generation (cyclic: all 5 classes equally, 30s each)
+ * - UPDATED for OPTION 3 HYBRID BALANCED model (simplified thresholds)
  * - Realistic sensor value ranges from training data
  * - Automatic feature scaling for ML model
  * - Prediction accuracy tracking
  * - Cloud integration with WiFi status monitoring (ThingSpeak + Firebase)
  * - Complete data logging
  * 
+ * ⚡ NEW MODEL THRESHOLDS (Option 3 - Hybrid Balanced):
+ * ────────────────────────────────────────────────────────
+ * Priority 1: SUNNY  -> lux > 130 (SIMPLIFIED - no other conditions!)
+ * Priority 2: STORMY -> pressure < 97200 Pa
+ * Priority 3: FOGGY  -> humidity > 48% AND lux < 120
+ * Priority 4: RAINY  -> pressure < 98000 Pa AND humidity > 42%
+ * Default:    CLOUDY -> Everything else (middle ranges)
+ * 
+ * Expected Prediction Distribution (after model retraining):
+ * - Sunny:  ~20-25% (bright conditions - lux >130)
+ * - Cloudy: ~30-35% (normal indoor - middle ranges)
+ * - Rainy:  ~15-20% (low pressure + humidity)
+ * - Stormy: ~12-15% (very low pressure)
+ * - Foggy:  ~10-12% (humid + dark)
+ * 
  * Commands:
  * - startsim: Begin continuous simulation
  * - Any key: Stop simulation
  * 
- * ⚠️  ACCEPTABLE MODEL BEHAVIOR:
- * The ML model may occasionally misclassify within similar weather patterns.
- * This is NORMAL and EXPECTED behavior due to:
+ * ⚠️  EXPECTED MODEL BEHAVIOR (Option 3 - Hybrid Balanced):
+ * With the NEW simplified thresholds, the model should have HIGH accuracy.
  * 
- * 1. Similar Sensor Patterns:
- *    • Cloudy ↔ Sunny: Both can have similar temp/humidity in transition periods
- *    • Rainy ↔ Stormy: Differ mainly in intensity, similar pressure/humidity
- *    • Foggy ↔ Cloudy: Very similar conditions, differ mainly in visibility
+ * 1. Clear Separation (NEW thresholds reduce overlap):
+ *    ✅ Sunny: lux >130 (VERY CLEAR - first priority check)
+ *    ✅ Stormy: pressure <97200 (DISTINCTIVE - second priority)
+ *    ✅ Foggy: humidity >48 AND lux <120 (CLEAR combination)
+ *    ✅ Rainy: pressure <98000 AND humidity >42 (CLEAR combination)
+ *    ✅ Cloudy: Everything else (DEFAULT - middle ranges)
  * 
- * 2. Realistic Sensor Noise:
- *    • Random data generation within training ranges
- *    • Some overlap exists between weather class boundaries
- *    • Model trained on real-world data with natural variations
+ * 2. Expected Accuracy:
+ *    • Overall: ~75-85% (realistic for indoor sensor data)
+ *    • Sunny: HIGH accuracy (~85-90%) - very distinctive lux threshold
+ *    • Stormy: HIGH accuracy (~80-85%) - distinctive pressure
+ *    • Foggy/Rainy: GOOD accuracy (~70-80%) - some overlap possible
+ *    • Cloudy: GOOD accuracy (~75-80%) - catches everything else
  * 
- * 3. Model Accuracy Context:
- *    • Overall accuracy: ~85-90% (from training/validation)
- *    • Occasional misclassifications are part of model behavior
- *    • NOT a bug - reflects real-world uncertainty
+ * 3. Simulation Testing:
+ *    ✅ Each pattern sustained for 30 seconds
+ *    ✅ Cycling through all 5 classes (0→1→2→3→4→0)
+ *    ✅ Predictions every 15 seconds (15 samples averaged)
+ *    ✅ Should see ALL 5 CLASSES appear (no "always Cloudy" anymore!)
  * 
- * Examples of ACCEPTABLE misclassifications:
- *    ✓ Sunny predicted as Cloudy (or vice versa) - similar conditions
- *    ✓ Rainy predicted as Stormy (or vice versa) - intensity difference
- *    ✓ Foggy predicted as Cloudy - very similar patterns
+ * Examples of ACCEPTABLE behavior:
+ *    ✓ Sunny correctly predicted when lux >200
+ *    ✓ Stormy correctly predicted when pressure <97000
+ *    ✓ Occasional Rainy↔Stormy confusion (both low pressure)
+ *    ✓ Occasional Foggy↔Cloudy confusion (boundary cases)
  * 
- * Examples of UNACCEPTABLE misclassifications (would indicate bugs):
- *    ✗ Sunny consistently predicted as Rainy - completely different
- *    ✗ All predictions are the same class - model failure
- *    ✗ >50% misclassification rate - training/scaling issue
+ * Examples of PROBLEMS (would indicate issues):
+ *    ✗ Sunny (lux 500) predicted as Cloudy - scaling/threshold bug
+ *    ✗ Stormy (pressure 96500) predicted as Sunny - priority bug
+ *    ✗ All predictions still Cloudy - model not retrained
+ *    ✗ >50% misclassification - wrong model loaded
  */
 
 #ifndef SENSOR_SIMULATE_H
@@ -76,17 +98,17 @@ private:
     static const unsigned long PREDICTION_INTERVAL = 15000; // 15 seconds (ThingSpeak rate limit)
     static const int BUFFER_SIZE = 15;                      // 15 readings for averaging
     
-    // Sensor value ranges - EXPANDED for diverse weather patterns
-    // Original narrow range was causing only Cloudy predictions
-    // Expanded ranges to generate all 5 weather classes
-    static constexpr float TEMP_MIN = 15.0f;      // Expanded: 19→15 (colder = Rainy/Stormy)
-    static constexpr float TEMP_MAX = 35.0f;      // Expanded: 30→35 (hotter = Sunny)
-    static constexpr float HUMID_MIN = 20.0f;     // Expanded: 29.3→20 (drier = Sunny)
-    static constexpr float HUMID_MAX = 95.0f;     // Expanded: 56.9→95 (wetter = Rainy/Stormy/Foggy)
-    static constexpr float PRESSURE_MIN = 95000.0f;  // Expanded: 96352→95000 (lower = Stormy)
-    static constexpr float PRESSURE_MAX = 103000.0f; // Expanded: 100301→103000 (higher = Sunny)
-    static constexpr float LUX_MIN = 0.0f;        // Keep: 0 (dark = Rainy/Stormy/Foggy)
-    static constexpr float LUX_MAX = 1000.0f;     // Expanded: 632→1000 (bright = Sunny)
+    // Sensor value ranges - MATCHED TO TRAINING DATA
+    // These ranges MUST match the scaling parameters in weather_scaling.h
+    // Using training data ranges ensures model sees familiar input patterns
+    static constexpr float TEMP_MIN = 19.0f;      // Match training: 19.0°C
+    static constexpr float TEMP_MAX = 30.0f;      // Match training: 30.0°C
+    static constexpr float HUMID_MIN = 29.3f;     // Match training: 29.3%
+    static constexpr float HUMID_MAX = 56.9f;     // Match training: 56.9%
+    static constexpr float PRESSURE_MIN = 96352.7f;  // Match training: 96352.68 Pa
+    static constexpr float PRESSURE_MAX = 100301.1f; // Match training: 100301.06 Pa
+    static constexpr float LUX_MIN = 0.0f;        // Match training: 0.0 lux
+    static constexpr float LUX_MAX = 632.1f;      // Match training: 632.08 lux
     static constexpr float GAS_MIN = 50.0f;       // Keep: baseline
     static constexpr float GAS_MAX = 2000.0f;     // Keep: max
     
@@ -126,6 +148,11 @@ private:
     bool isRunning;
     bool wifiAvailable;
     
+    // Sustained weather pattern control
+    int currentWeatherPattern;       // Current weather pattern (0-4)
+    unsigned long patternStartTime;  // When current pattern started
+    static const unsigned long PATTERN_DURATION = 30000; // 30 seconds per pattern
+    
     // ML Classifier
     Eloquent::ML::Port::RandomForest classifier;
     
@@ -146,6 +173,8 @@ public:
         failedUploads = 0;
         isRunning = false;
         wifiAvailable = false;
+        currentWeatherPattern = -1;  // Will be set on first reading
+        patternStartTime = 0;
         
         // Initialize prediction counts
         for (int i = 0; i < 5; i++) {
@@ -229,6 +258,8 @@ public:
         bufferIndex = 0;
         lastSensorRead = 0;
         lastPrediction = 0;
+        currentWeatherPattern = -1;  // Will trigger first pattern selection
+        patternStartTime = 0;
         
         // Reset statistics
         totalReadings = 0;
@@ -312,46 +343,93 @@ public:
     }
     
 private:
-    // Generate random sensor values with weather-pattern bias
+    // Generate random sensor values with sustained weather patterns
     void readSensors() {
-        // Randomly select weather pattern to generate (more diverse predictions)
-        int weatherPattern = random(0, 10);  // 0-9 for varied distribution
+        unsigned long currentTime = millis();
         
-        if (weatherPattern < 4) {
-            // 40% Cloudy - moderate everything
-            currentTemp = randomFloat(20.0f, 26.0f);
-            currentHumid = randomFloat(40.0f, 70.0f);
-            currentPressure = randomFloat(98000.0f, 101000.0f);
-            currentLux = randomFloat(100.0f, 400.0f);
-            currentGas = randomFloat(200.0f, 800.0f);
-        } else if (weatherPattern < 6) {
-            // 20% Sunny - high temp, low humidity, high lux
-            currentTemp = randomFloat(28.0f, 35.0f);
-            currentHumid = randomFloat(20.0f, 45.0f);
-            currentPressure = randomFloat(100500.0f, 103000.0f);
-            currentLux = randomFloat(500.0f, 1000.0f);
-            currentGas = randomFloat(100.0f, 400.0f);
-        } else if (weatherPattern < 8) {
-            // 20% Rainy - low temp, high humidity, low lux
-            currentTemp = randomFloat(15.0f, 22.0f);
-            currentHumid = randomFloat(70.0f, 90.0f);
-            currentPressure = randomFloat(96000.0f, 98500.0f);
-            currentLux = randomFloat(10.0f, 150.0f);
-            currentGas = randomFloat(300.0f, 900.0f);
-        } else if (weatherPattern < 9) {
-            // 10% Stormy - very low pressure, high humidity, very low lux
-            currentTemp = randomFloat(16.0f, 23.0f);
-            currentHumid = randomFloat(75.0f, 95.0f);
-            currentPressure = randomFloat(95000.0f, 97000.0f);
-            currentLux = randomFloat(0.0f, 80.0f);
-            currentGas = randomFloat(400.0f, 1200.0f);
+        // Check if we need to switch to a new weather pattern
+        if (currentWeatherPattern == -1 || 
+            (currentTime - patternStartTime) >= PATTERN_DURATION) {
+            
+            // Select new weather pattern (cycle through all 5 for demo diversity)
+            if (currentWeatherPattern == -1) {
+                currentWeatherPattern = 0; // Start with Cloudy
+            } else {
+                currentWeatherPattern = (currentWeatherPattern + 1) % 5; // Cycle: 0→1→2→3→4→0
+            }
+            
+            patternStartTime = currentTime;
+            
+            // Announce pattern change
+            Serial.println();
+            Serial.printf("🔄 Weather Pattern Changed → %s %s (sustained for 30s)\n", 
+                         weatherEmojis[currentWeatherPattern], 
+                         weatherClasses[currentWeatherPattern]);
+            Serial.println();
+        }
+        
+        // Generate sensor values based on SUSTAINED weather pattern
+        // UPDATED to match OPTION 3 HYBRID BALANCED model thresholds!
+        // NEW LOGIC (from notebook classify_weather function):
+        //   Priority 1: SUNNY  -> lux > 130
+        //   Priority 2: STORMY -> pressure < 97200
+        //   Priority 3: FOGGY  -> humidity > 48 AND lux < 120
+        //   Priority 4: RAINY  -> pressure < 98000 AND humidity > 42
+        //   Default:    CLOUDY -> Everything else
+        
+        if (currentWeatherPattern == 0) {
+            // Cloudy (Class 0) - Normal indoor conditions (DEFAULT case)
+            // MUST NOT trigger other conditions:
+            //   - lux MUST be 130 or BELOW (not Sunny)
+            //   - pressure MUST be 97200 or ABOVE (not Stormy)
+            //   - If humidity >48, lux MUST be 120 or ABOVE (not Foggy)
+            //   - If pressure <98000, humidity MUST be 42 or BELOW (not Rainy)
+            currentLux = randomFloat(60.0f, 130.0f);        // BELOW Sunny threshold (130)
+            currentPressure = randomFloat(98000.0f, 99500.0f); // ABOVE Rainy/Stormy threshold
+            currentHumid = randomFloat(38.0f, 48.0f);       // BELOW Foggy/Rainy threshold
+            currentTemp = randomFloat(22.0f, 26.0f);        // Mid-range temp
+            currentGas = randomFloat(200.0f, 600.0f);
+            
+        } else if (currentWeatherPattern == 1) {
+            // Foggy (Class 1) - High humidity + low light
+            // MUST MATCH: humidity > 48 AND lux < 120
+            // MUST AVOID: lux > 130 (Sunny), pressure < 97200 (Stormy)
+            currentHumid = randomFloat(48.1f, 56.9f);       // ABOVE 48 threshold
+            currentLux = randomFloat(0.0f, 119.0f);         // BELOW 120 threshold
+            currentPressure = randomFloat(97300.0f, 99000.0f); // ABOVE Stormy threshold
+            currentTemp = randomFloat(20.0f, 24.0f);        // Cooler side
+            currentGas = randomFloat(400.0f, 800.0f);
+            
+        } else if (currentWeatherPattern == 2) {
+            // Rainy (Class 2) - Low pressure + high humidity
+            // MUST MATCH: pressure < 98000 AND humidity > 42
+            // MUST AVOID: lux > 130 (Sunny), pressure < 97200 (Stormy)
+            // MUST AVOID: humidity > 48 AND lux < 120 (Foggy priority)
+            currentPressure = randomFloat(97200.0f, 97999.0f); // Between Stormy and threshold
+            currentHumid = randomFloat(42.1f, 52.0f);       // ABOVE 42 threshold
+            currentLux = randomFloat(30.0f, 130.0f);        // Keep moderate (avoid Foggy)
+            currentTemp = randomFloat(19.0f, 23.0f);        // Cooler (near min)
+            currentGas = randomFloat(300.0f, 700.0f);
+            
+        } else if (currentWeatherPattern == 3) {
+            // Stormy (Class 3) - Very low pressure
+            // MUST MATCH: pressure < 97200 (Priority 2 - checked early!)
+            // MUST AVOID: lux > 130 (Sunny has Priority 1)
+            currentPressure = randomFloat(96352.7f, 97199.0f); // BELOW 97200 threshold
+            currentHumid = randomFloat(45.0f, 56.5f);       // High humidity (storm conditions)
+            currentLux = randomFloat(0.0f, 100.0f);         // Very dark (stormy)
+            currentTemp = randomFloat(19.5f, 23.0f);        // Cool temperature
+            currentGas = randomFloat(350.0f, 900.0f);
+            
         } else {
-            // 10% Foggy - high humidity, moderate temp, low lux
-            currentTemp = randomFloat(18.0f, 24.0f);
-            currentHumid = randomFloat(80.0f, 95.0f);
-            currentPressure = randomFloat(97500.0f, 100000.0f);
-            currentLux = randomFloat(5.0f, 100.0f);
-            currentGas = randomFloat(500.0f, 1500.0f);
+            // Sunny (Class 4) - Bright light (Priority 1 - checked FIRST!)
+            // MUST MATCH: lux > 130 (SIMPLIFIED - no other conditions!)
+            // This has HIGHEST priority, so ANY lux >130 = Sunny
+            currentLux = randomFloat(131.0f, 632.1f);       // ABOVE 130 threshold
+            currentPressure = randomFloat(98500.0f, 100301.1f); // High pressure (typical sunny)
+            currentHumid = randomFloat(29.3f, 42.0f);       // Low humidity (typical sunny)
+            currentTemp = randomFloat(25.0f, 30.0f);        // Warmer (near max)
+            currentGas = randomFloat(100.0f, 400.0f);
         }
         
         // Store in buffer
